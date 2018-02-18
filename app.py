@@ -15,6 +15,9 @@ import plotly.graph_objs as go
 import pandas as pd
 import gdax
 import numpy as np
+import os
+
+from flask import send_from_directory
 
 import time
 import threading
@@ -158,6 +161,17 @@ def refreshTickers():
 # begin building the dash itself
 app = dash.Dash()
 
+static_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+
+@app.server.route('/static/<path:path>')
+def static_file(path):
+    return send_from_directory(static_folder, path)
+
+app.css.append_css({'external_url': '/static/css/bootstrap.min.css'})
+app.scripts.append_script({'external_url': 'https://code.jquery.com/jquery-3.2.1.slim.min.js'})
+app.scripts.append_script({'external_url': '/static/js/bootstrap.min.js'})
+app.scripts.append_script({'external_url': '/static/main.js'})
+
 # simple layout that can be improved with better CSS later, but it does the job for now
 static_content_before = [
     html.H2('CRYPTO WHALE WATCHING APP'),
@@ -174,16 +188,43 @@ static_content_before = [
     html.A(html.Button('Un-freeze all'), href="javascript:location.reload();")
  ]
 
+menu_items = []
+
+for ticker in TICKERS:
+    menu_items.append(html.Li(className='nav-item', children=[
+       html.A(ticker, className='nav-link', href='#' + ticker),
+    ]))
 
 static_content_after=dcc.Interval(
     id='main-interval-component',
     interval=2 * 1000  # in milliseconds for the automatic refresh; refreshes every 2 seconds
 )
-app.layout = html.Div(id='main_container',children=[
-     html.Div(static_content_before),
-     html.Div(id='graphs_Container'),
-     html.Div(static_content_after),
-  ])
+
+app.layout = html.Div(id='container', className='container', style={'marginTop': 20}, children=[
+    html.Div(className='col-lg-12', children=[
+        html.Div(className='row', children=[
+            html.H2('Crypto Whale Watching App'),
+            html.Div(className='card', children=[
+                html.Div(className='card-body', children=[
+                    html.H5('Donations greatly appreciated; will go towards hosting / development', className='card-title'),
+                    html.P(['ETH Donations Address: 0xDB63E1e60e644cE55563fB62f9F2Fc97B751bc49', html.Br(),
+                        'BTC Donations Address: 1BtEBzRxymw6NvtCfoGheLuh2E2iS5mPuo', html.Br(),
+                        'LTC Donations Address: LWaLxgaBveWATqwsYpYfoAqiG2tb2o5awM', html.Br(), html.Br(),
+                        'Legend: Bright colored mark = 5 or more distinct orders at a price-point. Hover over bubbles for more info. Click "Freeze all" button to halt refresh.'
+                    ], className='card-text'),
+                    html.A('GitHub Link (Click to support us by giving a star or request new features via "issues" tab)', href="https://github.com/pmaji/eth_python_tracker", target="_blank")
+                ])
+            ])
+        ]),
+        html.Div(className='row', style={'marginTop': 20}, children=[
+            html.Ul(className='nav nav-tabs', id='crypto', children=menu_items),
+        ]),
+        html.Div(className='tab-content', id='cryptoContent', children=[
+            html.Div(id='graphs_Container'),
+            html.Div(static_content_after)
+        ])
+    ])
+])
 
 
 def prepare_data(ticker):
@@ -225,20 +266,18 @@ def prepare_send():
    lCache = []
    cData=get_All_data()
    for ticker in TICKERS:
-     graph= 'live-graph-' + ticker.lower().replace('-', '')
-     lCache.append(html.Br())
-     lCache.append(html.Br())
-     lCache.append(html.A(html.Button('Hide/ Show '+ticker), 
-       href='javascript:(function(){if(document.getElementById("'+graph+'").style.display==""){document.getElementById("'+graph+'").style.display="none"}else{document.getElementById("'+graph+'").style.display=""}})()'))
-     lCache.append(dcc.Graph(
-                    id=graph, 
-                    figure=cData[ticker]
-                    ))
+        graph= 'live-graph-' + ticker.lower().replace('-', '')
+        lCache.append(html.Div(className='tab-pane fade', id=ticker, children=[
+            dcc.Graph(
+                id=graph,
+                figure=cData[ticker]
+            )
+        ]))
    return lCache
 
 # links up the chart creation to the interval for an auto-refresh
 # creates one callback per currency pairing; easy to replicate / add new pairs
-@app.callback(Output('graphs_Container', 'children'),
+@app.callback(Output('cryptoContent', 'children'),
    events=[Event('main-interval-component', 'interval')])
 def update_Site_data():
    return getSendCache()
@@ -263,7 +302,7 @@ def calcColor(x):
    return response
 
 if __name__ == '__main__':
-    refreshTickers()
+    #refreshTickers()
     t = threading.Thread(target=refreshWorker)
     t.daemon = True
     t.start()
